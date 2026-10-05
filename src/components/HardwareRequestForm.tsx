@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { Printer, Plus, X, Search } from 'lucide-react'
+import logoUrl from '../assets/logo'
 import { supabase } from '../lib/supabase'
 import type { Asset } from '../types'
 
@@ -70,7 +71,7 @@ const Document: React.FC<DocProps> = (p) => {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <img src="/logo.png.png" alt="" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
+          <img src={logoUrl} alt="" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
           <div>
             <div style={{ fontWeight: 800, fontSize: '11pt' }}>ZURICH FINANCE CORP</div>
             <div style={{ fontSize: '8pt', color: '#6b7280' }}>Hardware Request Form</div>

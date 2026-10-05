@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
+import logoUrl from '../../assets/logo'
 import {
   LayoutDashboard, Package, Users, Wrench, RefreshCw,
   BarChart2, UserCog, Settings, Monitor, Menu, X, ChevronRight,
@@ -54,7 +55,7 @@ const Sidebar: React.FC = () => {
       {/* Logo */}
       <div className={`flex items-center gap-3 px-4 py-5 ${collapsed ? 'justify-center' : ''}`}>
         <div className="relative flex-shrink-0">
-          <img src="/logo.png.png" alt="Zurich Logo" className="w-9 h-9 rounded-xl object-contain bg-white p-0.5 shadow-lg" />
+          <img src={logoUrl} alt="Zurich Logo" className="w-9 h-9 rounded-xl object-contain bg-white p-0.5 shadow-lg" />
           <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-slate-900" />
         </div>
         {!collapsed && (

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { Search, Printer, FileSpreadsheet, Download, User, ChevronRight } from 'lucide-react'
+import logoUrl from '../assets/logo'
 import { supabase } from '../lib/supabase'
 import { formatDate, formatPeso } from '../utils/constants'
 import { exportToExcel, exportToCSV } from '../utils/export'
@@ -290,7 +291,7 @@ const EmployeeAccountabilityReport: React.FC = () => {
                   {/* Header */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <img src="/logo.png.png" alt="" style={{ width: '38px', height: '38px', objectFit: 'contain' }} />
+                      <img src={logoUrl} alt="" style={{ width: '38px', height: '38px', objectFit: 'contain' }} />
                       <div>
                         <div style={{ fontWeight: 800, fontSize: '11pt' }}>ZURICH FINANCE CORP</div>
                         <div style={{ fontSize: '8pt', color: '#6b7280' }}>Employee Accountability Sheet</div>
