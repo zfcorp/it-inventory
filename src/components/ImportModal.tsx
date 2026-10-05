@@ -127,24 +127,23 @@ const ImportModal: React.FC<Props> = ({ open, onClose, onImported, categories, b
             warning = `No Asset ID — auto-assigned ${finalAssetId}`
           }
 
-          // Handle Asset ID already in DB — append suffix
+          // Handle Asset ID already in DB — skip instead of rename
           if (existingAssetIds.has(finalAssetId)) {
-            const suffix = String(Date.now()).slice(-4) + String(i)
-            finalAssetId = `${finalAssetId}_${suffix}`
-            warning = (warning ? warning + '; ' : '') + `Duplicate ID in DB — renamed to ${finalAssetId}`
+            error = `Asset ID "${finalAssetId}" already exists — skipped`
           }
 
-          // Handle duplicate within this import file — append row suffix
-          const seenCount = seenIdsInFile.get(finalAssetId) || 0
-          if (seenCount > 0) {
-            finalAssetId = `${finalAssetId}_r${i + 2}`
-            warning = (warning ? warning + '; ' : '') + `Duplicate in file — renamed to ${finalAssetId}`
+          // Handle duplicate within this import file — skip
+          if (!error) {
+            const seenCount = seenIdsInFile.get(finalAssetId) || 0
+            if (seenCount > 0) {
+              error = `Asset ID "${finalAssetId}" appears more than once in this file — skipped`
+            }
+            seenIdsInFile.set(finalAssetId, seenCount + 1)
           }
-          seenIdsInFile.set(finalAssetId, seenCount + 1)
 
           // Warn on duplicate serial (non-blocking)
           if (serial && existingSerials.has(serial)) {
-            warning = (warning ? warning + '; ' : '') + `Serial ${serial} already in DB`
+            warning = `Serial No. "${serial}" already exists in DB`
           }
         }
 
@@ -210,15 +209,19 @@ const ImportModal: React.FC<Props> = ({ open, onClose, onImported, categories, b
         if (empMap.has(nameKey)) {
           empId = empMap.get(nameKey)!
         } else {
-          // Fuzzy match — first word match for names like "Juan Dela Cruz" vs "Juan"
-          const firstWord = nameKey.split(' ')[0]
-          const fuzzy = [...empMap.entries()].find(([k]) =>
-            k.startsWith(firstWord) && firstWord.length > 2
-          )
+          // Fuzzy match — match only if first AND last name both match
+          const nameParts = nameKey.split(' ').filter(Boolean)
+          const fuzzy = [...empMap.entries()].find(([k]) => {
+            const kParts = k.split(' ').filter(Boolean)
+            // Must share first name AND (last name or only one word)
+            const firstMatch = kParts[0] === nameParts[0] && nameParts[0].length > 2
+            const lastMatch = nameParts.length === 1 || kParts[kParts.length - 1] === nameParts[nameParts.length - 1]
+            return firstMatch && lastMatch
+          })
           if (fuzzy) {
             empId = fuzzy[1]
           } else {
-            // Create new employee
+            // Create new employee — exact name only, no duplicates
             const { data: newEmp, error: empErr } = await supabase
               .from('employees')
               .insert({
@@ -297,7 +300,7 @@ const ImportModal: React.FC<Props> = ({ open, onClose, onImported, categories, b
             <Upload size={32} className="text-gray-300 mx-auto mb-3" />
             <p className="text-sm font-semibold text-gray-600">Click to upload Excel or CSV</p>
             <p className="text-xs text-gray-400 mt-1">All rows with Particulars will be imported</p>
-            <p className="text-xs text-gray-400 mt-0.5">Missing/duplicate Asset IDs are auto-resolved</p>
+            <p className="text-xs text-gray-400 mt-0.5">Existing assets and employees are matched — no duplicates created</p>
           </div>
           <input ref={fileRef} type="file" accept=".xlsx,.csv" onChange={handleFileChange} className="hidden" />
         </div>
@@ -312,12 +315,12 @@ const ImportModal: React.FC<Props> = ({ open, onClose, onImported, categories, b
             </span>
             {warnRows.length > 0 && (
               <span className="flex items-center gap-1.5 text-amber-600">
-                <Info size={14} /> {warnRows.length} with auto-fixes (IDs renamed)
+                <Info size={14} /> {warnRows.length} with warnings
               </span>
             )}
             {errorRows.length > 0 && (
               <span className="flex items-center gap-1.5 text-red-600">
-                <AlertCircle size={14} /> {errorRows.length} will be skipped (missing Particulars)
+                <AlertCircle size={14} /> {errorRows.length} already exist or invalid — skipped
               </span>
             )}
           </div>
