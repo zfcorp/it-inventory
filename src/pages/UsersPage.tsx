@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { Plus, UserCog, Edit2, KeyRound, Eye, EyeOff } from 'lucide-react'
 import { supabase } from '../lib/supabase'
-import { supabaseAdmin } from '../lib/supabaseAdmin'
+import { getAdminClient } from '../lib/supabaseAdmin'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../components/ui/Toast'
 import Modal from '../components/ui/Modal'
@@ -96,7 +96,13 @@ const UsersPage: React.FC = () => {
       }
     } else {
       // Changing another user's password — use admin client
-      const { error } = await supabaseAdmin.auth.admin.updateUserById(
+      const adminClient = getAdminClient()
+      if (!adminClient) {
+        toast('error', 'Service role key not configured. Add VITE_SUPABASE_SERVICE_ROLE_KEY to your .env file.')
+        setSavingPassword(false)
+        return
+      }
+      const { error } = await adminClient.auth.admin.updateUserById(
         passwordUser.id,
         { password: newPassword }
       )
