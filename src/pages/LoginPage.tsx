@@ -61,7 +61,7 @@ const LoginPage: React.FC = () => {
                   type="text"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
-                  className="w-full bg-white/8 border border-white/10 text-white placeholder-slate-500 rounded-xl px-3.5 py-3 pl-10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                  className="w-full bg-slate-700/60 border border-slate-600 text-white placeholder-slate-400 rounded-xl px-3.5 py-3 pl-10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                   placeholder="you@zurichfinance.com"
                   required
                   autoFocus
@@ -77,7 +77,7 @@ const LoginPage: React.FC = () => {
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={e => setPassword(e.target.value)}
-                  className="w-full bg-white/8 border border-white/10 text-white placeholder-slate-500 rounded-xl px-3.5 py-3 pl-10 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                  className="w-full bg-slate-700/60 border border-slate-600 text-white placeholder-slate-400 rounded-xl px-3.5 py-3 pl-10 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                   placeholder="••••••••"
                   required
                 />
