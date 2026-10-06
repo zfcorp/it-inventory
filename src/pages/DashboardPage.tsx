@@ -211,13 +211,141 @@ const AlertDrawer: React.FC<{
   )
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
+// ─── Department Detail Drawer ────────────────────────────────────────────────
+const DeptDrawer: React.FC<{
+  department: string | null
+  onClose: () => void
+  onViewAsset: (id: string) => void
+}> = ({ department, onClose, onViewAsset }) => {
+  const [rows, setRows] = useState<AlertAsset[]>([])
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!department) return
+    setLoading(true)
+    const fetch = async () => {
+      // Get department id first
+      const { data: deptData } = await supabase
+        .from('departments').select('id').ilike('name', department).single()
+
+      let q = supabase
+        .from('assets')
+        .select('id, asset_id, particulars, status, serial_no, location, date_acquired, employees(name)')
+        .order('particulars')
+        .limit(200)
+
+      if (deptData) {
+        // Get employees in this department
+        const { data: emps } = await supabase
+          .from('employees').select('id').eq('department_id', (deptData as { id: string }).id)
+        const empIds = (emps || []).map((e: { id: string }) => e.id)
+        if (empIds.length > 0) {
+          q = q.in('issued_to_employee_id', empIds)
+        } else {
+          setRows([]); setLoading(false); return
+        }
+      }
+
+      const { data } = await q
+      setRows(
+        (data || []).map((a: Record<string, unknown>) => ({
+          id: a.id as string,
+          asset_id: a.asset_id as string,
+          particulars: a.particulars as string,
+          status: a.status as AssetStatus,
+          serial_no: a.serial_no as string | null,
+          location: a.location as string | null,
+          date_acquired: a.date_acquired as string | null,
+          employee_name: (a.employees as { name: string } | null)?.name || null,
+        }))
+      )
+      setLoading(false)
+    }
+    fetch()
+  }, [department])
+
+  if (!department) return null
+
+  // Group by status
+  const statusGroups: Record<string, AlertAsset[]> = {}
+  rows.forEach(r => {
+    if (!statusGroups[r.status]) statusGroups[r.status] = []
+    statusGroups[r.status].push(r)
+  })
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40" onClick={onClose} />
+      <div className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-lg bg-white shadow-2xl flex flex-col animate-slide-right">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <div>
+            <h2 className="text-base font-bold text-gray-900">{department}</h2>
+            <p className="text-xs text-gray-400 mt-0.5">{rows.length} assets assigned</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
+            <X size={16} className="text-gray-500" />
+          </button>
+        </div>
+
+        {/* Summary badges */}
+        {!loading && Object.keys(statusGroups).length > 0 && (
+          <div className="px-6 py-3 border-b border-gray-50 flex flex-wrap gap-2">
+            {Object.entries(statusGroups).map(([status, items]) => (
+              <span key={status} className="text-xs px-2 py-1 rounded-lg bg-gray-100 text-gray-600 font-semibold">
+                {status}: {items.length}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* List */}
+        <div className="flex-1 overflow-y-auto">
+          {loading ? (
+            <div className="flex justify-center py-16"><LoadingSpinner /></div>
+          ) : rows.length === 0 ? (
+            <div className="text-center py-16 text-gray-400 text-sm">No assets assigned to this department</div>
+          ) : (
+            <div className="divide-y divide-gray-50">
+              {rows.map((a, i) => (
+                <div key={a.id} className="flex items-start gap-4 px-6 py-3.5 hover:bg-gray-50 transition-colors group">
+                  <span className="text-xs text-gray-300 font-mono w-5 pt-0.5 flex-shrink-0">{i + 1}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`font-mono text-xs font-bold ${a.asset_id ? 'text-blue-600' : 'text-amber-500 italic'}`}>
+                        {a.asset_id || 'No ID'}
+                      </span>
+                      <StatusBadge status={a.status} size="sm" />
+                    </div>
+                    <p className="text-sm font-semibold text-gray-800 mt-0.5 truncate">{a.particulars}</p>
+                    {a.employee_name && <p className="text-xs text-gray-400 mt-0.5">👤 {a.employee_name}</p>}
+                  </div>
+                  <button
+                    onClick={() => { onViewAsset(a.id); onClose() }}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 hover:bg-blue-50 hover:text-blue-600 rounded-lg flex-shrink-0"
+                  >
+                    <ExternalLink size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="px-6 py-4 border-t border-gray-100 bg-gray-50">
+          <p className="text-xs text-gray-400 text-center">Click any row's → icon to open the full asset profile</p>
+        </div>
+      </div>
+    </>
+  )
+}
 const DashboardPage: React.FC = () => {
   const navigate = useNavigate()
   const [stats, setStats] = useState<Stats | null>(null)
   const [alerts, setAlerts] = useState<AlertDef[]>([])
   const [loading, setLoading] = useState(true)
   const [activeAlert, setActiveAlert] = useState<AlertDef | null>(null)
+  const [activeDept, setActiveDept] = useState<string | null>(null)
 
   const fetchStats = useCallback(async () => {
     setLoading(true)
@@ -237,7 +365,7 @@ const DashboardPage: React.FC = () => {
         catMap[cat] = (catMap[cat] || 0) + 1
       })
       const byCategory = Object.entries(catMap).map(([category, count]) => ({ category, count }))
-        .sort((a, b) => b.count - a.count).slice(0, 12)
+        .sort((a, b) => b.count - a.count).slice(0, 15)
 
       const deptMap: Record<string, number> = {}
       assets.forEach(a => {
@@ -345,13 +473,13 @@ const DashboardPage: React.FC = () => {
             </div>
             <h2 className="text-sm font-bold text-gray-900">Inventory by Category</h2>
           </div>
-          <ResponsiveContainer width="100%" height={270}>
+          <ResponsiveContainer width="100%" height={340}>
             <BarChart data={stats.byCategory} layout="vertical" margin={{ left: 10, right: 10 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
               <XAxis type="number" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-              <YAxis type="category" dataKey="category" tick={{ fontSize: 11, fill: '#64748b' }} width={115} axisLine={false} tickLine={false} />
+              <YAxis type="category" dataKey="category" tick={{ fontSize: 10, fill: '#64748b' }} width={130} axisLine={false} tickLine={false} />
               <Tooltip content={<CustomTooltip />} cursor={{ fill: '#f8fafc' }} />
-              <Bar dataKey="count" radius={[0, 6, 6, 0]} maxBarSize={22}>
+              <Bar dataKey="count" radius={[0, 6, 6, 0]} maxBarSize={18}>
                 {stats.byCategory.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
               </Bar>
             </BarChart>
@@ -385,13 +513,19 @@ const DashboardPage: React.FC = () => {
               <Monitor size={14} className="text-emerald-600" />
             </div>
             <h2 className="text-sm font-bold text-gray-900">Inventory by Department</h2>
+            <span className="text-xs text-gray-400 ml-1">— click a bar to see assets</span>
           </div>
           <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={stats.byDepartment} margin={{ bottom: 5 }}>
+            <BarChart
+              data={stats.byDepartment}
+              margin={{ bottom: 5 }}
+              onClick={(e) => { if (e?.activeLabel) setActiveDept(e.activeLabel as string) }}
+              style={{ cursor: 'pointer' }}
+            >
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
               <XAxis dataKey="department" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-              <Tooltip content={<CustomTooltip />} cursor={{ fill: '#f8fafc' }} />
+              <Tooltip content={<CustomTooltip />} cursor={{ fill: '#eff6ff' }} />
               <Bar dataKey="count" fill="url(#blueGrad)" radius={[6, 6, 0, 0]} maxBarSize={40} />
               <defs>
                 <linearGradient id="blueGrad" x1="0" y1="0" x2="0" y2="1">
@@ -454,6 +588,13 @@ const DashboardPage: React.FC = () => {
       <AlertDrawer
         alert={activeAlert}
         onClose={() => setActiveAlert(null)}
+        onViewAsset={(id) => navigate(`/inventory/${id}`)}
+      />
+
+      {/* Department Detail Drawer */}
+      <DeptDrawer
+        department={activeDept}
+        onClose={() => setActiveDept(null)}
         onViewAsset={(id) => navigate(`/inventory/${id}`)}
       />
     </div>

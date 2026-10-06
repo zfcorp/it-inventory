@@ -20,8 +20,80 @@ export const exportToCSV = (data: Record<string, unknown>[], filename: string) =
   URL.revokeObjectURL(link.href)
 }
 
-export const downloadInventoryTemplate = () => {
-  // ── Main sheet ──────────────────────────────────────────────────────────
+export const downloadPhoneTemplate = () => {
+  const headers = [
+    'No.',
+    'Unit',
+    'Serial Number',
+    'IMEI Number',
+    'Price',
+    'Issued To',
+    'Date Issued',
+    'Returned By',
+    'Status',
+    'Branch',
+    'Remarks',
+  ]
+
+  const samples = [
+    [1, 'SAMSUNG GALAXY A12', 'SN123456789', '352884792825805', 9990, 'Juan Dela Cruz', '15-Jan-26', '', 'Working', 'Main Office', ''],
+    [2, 'IPHONE 13', 'SN987654321', '490154203237518', 45000, 'Maria Santos', '20-Feb-26', '', 'Working', 'Main Office', 'Fast to drain battery'],
+    [3, 'SAMSUNG GALAXY A54', 'SN456789123', '356938035643809', 18000, '', '', 'Ruel Calicdan', 'Returned', 'Main Office', 'Returned due to upgrade'],
+  ]
+
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...samples])
+  ws['!cols'] = [
+    { wch: 5 },   // No.
+    { wch: 28 },  // Unit
+    { wch: 18 },  // Serial Number
+    { wch: 18 },  // IMEI Number
+    { wch: 12 },  // Price
+    { wch: 22 },  // Issued To
+    { wch: 13 },  // Date Issued
+    { wch: 22 },  // Returned By
+    { wch: 14 },  // Status
+    { wch: 15 },  // Branch
+    { wch: 35 },  // Remarks
+  ]
+
+  // Instructions sheet
+  const instructions = [
+    ['ZURICH FINANCE CORP — Phone / Tablet Import Template'],
+    [''],
+    ['COLUMN GUIDE', '', ''],
+    ['Column', 'Required?', 'Description'],
+    ['No.', 'No', 'Row number — auto-assigned on import'],
+    ['Unit', 'YES', 'Phone/tablet model — e.g. SAMSUNG GALAXY A12, IPHONE 13'],
+    ['Serial Number', 'No', 'Manufacturer serial number'],
+    ['IMEI Number', 'No', '15-digit IMEI number'],
+    ['Price', 'No', 'Purchase price in PHP — numbers only'],
+    ['Issued To', 'No', 'Employee name — auto-created if not found'],
+    ['Date Issued', 'No', 'e.g. 15-Jan-26 or 2026-01-15'],
+    ['Returned By', 'No', 'Name of person who returned the unit'],
+    ['Status', 'No', 'Working / Returned / Replaced / Damaged / Retired / Disposed'],
+    ['Branch', 'No', 'Must match a branch in the system'],
+    ['Remarks', 'No', 'Any notes — condition, issues, history'],
+    [''],
+    ['VALID STATUS VALUES'],
+    ['Working', 'Returned', 'Replaced', 'Damaged', 'Missing', 'Retired', 'Disposed'],
+    [''],
+    ['TIPS'],
+    ['• Delete the sample rows (rows 2–4) before importing your real data'],
+    ['• Keep the header row (row 1) exactly as-is'],
+    ['• IMEI stored separately — will appear in the IMEI column on the phones tab'],
+    ['• "Returned By" goes into the Notes field and is parsed automatically'],
+  ]
+
+  const ws2 = XLSX.utils.aoa_to_sheet(instructions)
+  ws2['!cols'] = [{ wch: 20 }, { wch: 12 }, { wch: 55 }]
+
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, '📱 Phone Import Data')
+  XLSX.utils.book_append_sheet(wb, ws2, 'ℹ️ Instructions')
+  XLSX.writeFile(wb, 'ZFC_Phone_Tablet_Import_Template.xlsx')
+}
+
+export const downloadInventoryTemplate = () => {  // ── Main sheet ──────────────────────────────────────────────────────────
   const headers = [
     'No.',
     'Date Acquired',

@@ -30,6 +30,7 @@ interface ParsedRow {
   status: string
   category: string
   branch: string
+  imei: string               // phone IMEI — saved to asset_details
   warning?: string  // non-blocking notice
   error?: string    // blocking — will be skipped
 }
@@ -100,6 +101,10 @@ const ImportModal: React.FC<Props> = ({ open, onClose, onImported, categories, b
       const ws = wb.Sheets[wb.SheetNames[0]]
       const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '', raw: true })
 
+      // Detect if this is a phone template (has IMEI Number or Unit column)
+      const firstRow = raw[0] || {}
+      const isPhoneTemplate = 'IMEI Number' in firstRow || 'Unit' in firstRow || 'Returned By' in firstRow
+
       // Fetch existing asset IDs and serial numbers from DB
       const { data: existing } = await supabase.from('assets').select('asset_id, serial_no')
       const existingAssetIds = new Set((existing || []).map((a: { asset_id: string }) => a.asset_id))
@@ -109,9 +114,16 @@ const ImportModal: React.FC<Props> = ({ open, onClose, onImported, categories, b
       const seenIdsInFile = new Map<string, number>() // id -> count
 
       const parsed: ParsedRow[] = raw.map((r, i) => {
-        const particulars = String(r['Particulars'] || r['particulars'] || '').trim()
+        // Support both standard (Particulars) and phone template (Unit) columns
+        const particulars = String(r['Particulars'] || r['particulars'] || r['Unit'] || r['unit'] || '').trim()
         const rawAssetId = String(r['ID'] || r['id'] || r['Asset ID'] || '').trim()
-        const serial = String(r['Serial No.'] || r['serial_no'] || r['Serial'] || '').trim()
+        const serial = String(r['Serial No.'] || r['serial_no'] || r['Serial'] || r['Serial Number'] || '').trim()
+        // Phone-specific fields
+        const imei = String(r['IMEI Number'] || r['IMEI'] || r['imei'] || '').trim()
+        const returnedBy = String(r['Returned By'] || r['returned_by'] || '').trim()
+        const remarks = String(r['Remarks'] || r['remarks'] || r['Notes'] || r['notes'] || '').trim()
+        // Merge returned by + remarks into notes
+        const phoneNotes = [returnedBy ? `Returned by ${returnedBy}` : '', remarks].filter(Boolean).join('; ')
 
         let error: string | undefined
         let warning: string | undefined
@@ -121,19 +133,20 @@ const ImportModal: React.FC<Props> = ({ open, onClose, onImported, categories, b
         if (!particulars) {
           error = 'Missing Particulars — row will be skipped'
         } else {
-          // Handle missing Asset ID — auto-generate a placeholder
+          // Handle missing Asset ID — auto-generate unique placeholder using timestamp + row
           if (!finalAssetId) {
-            finalAssetId = `IMP-${String(i + 1).padStart(4, '0')}`
+            finalAssetId = `IMP-${String(i + 1).padStart(4, '0')}-${Date.now().toString().slice(-5)}`
             warning = `No Asset ID — auto-assigned ${finalAssetId}`
           }
 
-          // Handle Asset ID already in DB — skip instead of rename
+          // Handle Asset ID already in DB — skip
           if (existingAssetIds.has(finalAssetId)) {
             error = `Asset ID "${finalAssetId}" already exists — skipped`
           }
 
-          // Handle duplicate within this import file — skip
-          if (!error) {
+          // Handle duplicate Asset ID within this import file only — skip
+          // (only applies to real/non-generated IDs to avoid false positives)
+          if (!error && rawAssetId) {
             const seenCount = seenIdsInFile.get(finalAssetId) || 0
             if (seenCount > 0) {
               error = `Asset ID "${finalAssetId}" appears more than once in this file — skipped`
@@ -141,9 +154,10 @@ const ImportModal: React.FC<Props> = ({ open, onClose, onImported, categories, b
             seenIdsInFile.set(finalAssetId, seenCount + 1)
           }
 
-          // Warn on duplicate serial (non-blocking)
+          // Serial number duplicate — warning only, never skip
+          // (phones often share same model serials across batches)
           if (serial && existingSerials.has(serial)) {
-            warning = `Serial No. "${serial}" already exists in DB`
+            warning = (warning ? warning + '; ' : '') + `Serial "${serial}" already in DB`
           }
         }
 
@@ -154,10 +168,11 @@ const ImportModal: React.FC<Props> = ({ open, onClose, onImported, categories, b
           asset_id_original: rawAssetId,
           serial_no: serial,
           date_acquired: parseDate((r['Date Acquired'] || r['date_acquired']) as string | number | undefined),
-          cost_per_unit: parseFloat(String(r['Cost Per Unit'] || r['cost_per_unit'] || '').replace(/[^0-9.]/g, '')) || null,
+          cost_per_unit: parseFloat(String(r['Cost Per Unit'] || r['cost_per_unit'] || r['Price'] || r['price'] || '').replace(/[^0-9.]/g, '')) || null,
           issued_to: String(r['Issued To'] || r['issued_to'] || '').trim(),
           date_issued: parseDate((r['Date Issued'] || r['date_issued']) as string | number | undefined),
-          notes: String(r['Notes'] || r['notes'] || '').trim(),
+          notes: (isPhoneTemplate ? phoneNotes : String(r['Notes'] || r['notes'] || '').trim()),
+          imei,
           status: String(r['Status'] || r['status'] || 'Available').trim() || 'Available',
           category: String(r['Category'] || r['category'] || '').trim(),
           branch: String(r['Branch'] || r['branch'] || '').trim(),
@@ -195,7 +210,12 @@ const ImportModal: React.FC<Props> = ({ open, onClose, onImported, categories, b
       const row = toImport[i]
       setImportProgress(Math.round(((i + 1) / toImport.length) * 100))
 
-      const cat = categories.find(c => c.name.toLowerCase() === row.category.toLowerCase())
+      // For phone imports with no category specified, default to "Company Phone"
+      // Detect phone if: IMEI present, or model name matches phone brands
+      const phoneKeywords = ['phone', 'samsung', 'iphone', 'honor', 'huawei', 'oppo', 'vivo', 'realme', 'xiaomi', 'redmi', 'nokia', 'motorola']
+      const isPhoneByName = phoneKeywords.some(k => row.particulars.toLowerCase().includes(k))
+      const categoryName = row.category || (row.imei || isPhoneByName ? 'Company Phone' : '')
+      const cat = categories.find(c => c.name.toLowerCase() === categoryName.toLowerCase())
       const branch = branches.find(b => b.name.toLowerCase() === row.branch.toLowerCase())
 
       // ── Auto-create employee if name given but not in DB ──────────────────
@@ -205,23 +225,49 @@ const ImportModal: React.FC<Props> = ({ open, onClose, onImported, categories, b
       if (issuedToName) {
         const nameKey = issuedToName.toLowerCase()
 
+        // Normalize a name to a sorted set of significant parts
+        // Handles: "Last, First Middle", "First Middle Last", "First Last"
+        const normalizeName = (name: string): string => {
+          let n = name.toLowerCase().trim()
+          // Handle "Last, First Middle" format — convert to "First Last"
+          if (n.includes(',')) {
+            const [last, rest] = n.split(',').map(s => s.trim())
+            n = `${rest} ${last}`
+          }
+          // Extract all words, remove very short ones (initials like "M.")
+          const parts = n.split(/\s+/).filter(p => p.length > 1 && p !== 'jr' && p !== 'sr' && p !== 'ii' && p !== 'iii')
+          // Sort parts so "Randel Mendoza" and "Mendoza Randel" match
+          return parts.sort().join(' ')
+        }
+
+        const normalizedInput = normalizeName(issuedToName)
+
         // Exact match first
         if (empMap.has(nameKey)) {
           empId = empMap.get(nameKey)!
         } else {
-          // Fuzzy match — match only if first AND last name both match
-          const nameParts = nameKey.split(' ').filter(Boolean)
+          // Smart match — normalize both names and compare
+          // "Mendoza, Randel Caguicla" → "caguicla mendoza randel"
+          // "Randel Mendoza" → "mendoza randel"
+          // Match if all parts of the shorter name appear in the longer name
           const fuzzy = [...empMap.entries()].find(([k]) => {
-            const kParts = k.split(' ').filter(Boolean)
-            // Must share first name AND (last name or only one word)
-            const firstMatch = kParts[0] === nameParts[0] && nameParts[0].length > 2
-            const lastMatch = nameParts.length === 1 || kParts[kParts.length - 1] === nameParts[nameParts.length - 1]
-            return firstMatch && lastMatch
+            const normalizedDB = normalizeName(k)
+            const inputParts = normalizedInput.split(' ')
+            const dbParts = normalizedDB.split(' ')
+
+            // All parts of the shorter name must exist in the longer name
+            const shorter = inputParts.length <= dbParts.length ? inputParts : dbParts
+            const longer  = inputParts.length <= dbParts.length ? dbParts   : inputParts
+
+            // Every word in the shorter name must appear in the longer name
+            return shorter.every(part => longer.some(p => p === part || p.startsWith(part) || part.startsWith(p)))
+              && shorter.length >= 2 // must have at least 2 meaningful words to match
           })
+
           if (fuzzy) {
             empId = fuzzy[1]
           } else {
-            // Create new employee — exact name only, no duplicates
+            // Create new employee
             const { data: newEmp, error: empErr } = await supabase
               .from('employees')
               .insert({
@@ -240,7 +286,7 @@ const ImportModal: React.FC<Props> = ({ open, onClose, onImported, categories, b
         }
       }
 
-      const { error } = await supabase.from('assets').insert({
+      const { data: insertedAsset, error } = await supabase.from('assets').insert({
         particulars: row.particulars,
         asset_id: row.asset_id,
         serial_no: row.serial_no || null,
@@ -254,7 +300,7 @@ const ImportModal: React.FC<Props> = ({ open, onClose, onImported, categories, b
         branch_id: branch?.id || null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-      })
+      }).select('id').single()
 
       if (error) {
         skipped++
@@ -262,6 +308,16 @@ const ImportModal: React.FC<Props> = ({ open, onClose, onImported, categories, b
       } else {
         imported++
         if (row.warning) warnings++
+
+        // Save IMEI to asset_details if present
+        if (row.imei && insertedAsset) {
+          await supabase.from('asset_details').insert({
+            asset_id: (insertedAsset as { id: string }).id,
+            detail_data: { 'IMEI': row.imei },
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+        }
       }
     }
 
@@ -331,9 +387,10 @@ const ImportModal: React.FC<Props> = ({ open, onClose, onImported, categories, b
               <thead className="bg-gray-50 sticky top-0 border-b border-gray-100">
                 <tr>
                   <th className="table-header w-10">Row</th>
-                  <th className="table-header">Particulars</th>
+                  <th className="table-header">Particulars / Unit</th>
                   <th className="table-header">Asset ID</th>
                   <th className="table-header">Serial No.</th>
+                  <th className="table-header">IMEI</th>
                   <th className="table-header">Date Acquired</th>
                   <th className="table-header">Issued To</th>
                   <th className="table-header">Status</th>
@@ -363,6 +420,7 @@ const ImportModal: React.FC<Props> = ({ open, onClose, onImported, categories, b
                       )}
                     </td>
                     <td className="table-cell font-mono text-gray-500">{r.serial_no || '—'}</td>
+                    <td className="table-cell font-mono text-gray-500">{r.imei || '—'}</td>
                     <td className="table-cell text-gray-500">{r.date_acquired || '—'}</td>
                     <td className="table-cell text-gray-600 max-w-32 truncate">{r.issued_to || '—'}</td>
                     <td className="table-cell">{r.status}</td>

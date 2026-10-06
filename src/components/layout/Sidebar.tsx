@@ -18,8 +18,7 @@ const INVENTORY_TABS = [
   { label: 'HUB Switches',        tab: 'switches',   icon: Layers },
   { label: 'Monitors',            tab: 'monitors',   icon: Tv },
   { label: 'Peripherals',         tab: 'peripherals',icon: Mouse },
-  { label: 'Working Cellphones',  tab: 'phones',     icon: Smartphone },
-  { label: 'Replaced Cellphones', tab: 'replaced-phones', icon: Smartphone },
+  { label: 'Phones',              tab: 'phones',     icon: Smartphone },
   { label: 'Tablets',             tab: 'tablets',    icon: Tablet },
 ]
 

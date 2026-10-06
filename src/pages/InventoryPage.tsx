@@ -11,7 +11,7 @@ import EmptyState from '../components/ui/EmptyState'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
 import DateInput from '../components/ui/DateInput'
 import { ASSET_STATUSES, formatPeso, formatDate } from '../utils/constants'
-import { exportToExcel, exportToCSV, downloadInventoryTemplate, assetsToExportRows } from '../utils/export'
+import { exportToExcel, exportToCSV, downloadInventoryTemplate, downloadPhoneTemplate, assetsToExportRows } from '../utils/export'
 import { logAudit } from '../utils/auditLogger'
 import type { Asset, AssetStatus, Category, Branch, Employee } from '../types'
 import AssetFormModal from '../components/AssetFormModal'
@@ -42,8 +42,8 @@ const TAB_LABELS: Record<string, string> = {
   switches:         'HUB Switches',
   monitors:         'Monitors',
   peripherals:      'Peripherals',
-  phones:           'Working Cellphones',
-  'replaced-phones':'Replaced Cellphones',
+  phones:           'Phones',
+  'replaced-phones':'Replaced Phones',
   tablets:          'Tablets',
 }
 
@@ -107,7 +107,7 @@ const InventoryPage: React.FC = () => {
 
     let query = supabase
       .from('assets')
-      .select(`*, categories(id, name, type_group), branch:branch_id(id, name), employees(id, name, departments(id, name))`, { count: 'exact' })
+      .select(`*, categories(id, name, type_group), branch:branch_id(id, name), employees(id, name, departments(id, name)), asset_details(detail_data)`, { count: 'exact' })
 
     // Tab-based category filter
     if (activeTab && TAB_CATEGORIES[activeTab]) {
@@ -262,8 +262,15 @@ const InventoryPage: React.FC = () => {
 
         {/* Export */}
         <div className="flex gap-1">
-          <button onClick={downloadInventoryTemplate} className="btn-secondary text-sm px-3 flex items-center gap-1.5" title="Download template">
-            <Download size={14} /><span className="hidden sm:inline">Template</span>
+          <button
+            onClick={() => (activeTab === 'phones' || activeTab === 'tablets' || activeTab === 'replaced-phones') ? downloadPhoneTemplate() : downloadInventoryTemplate()}
+            className="btn-secondary text-sm px-3 flex items-center gap-1.5"
+            title="Download import template"
+          >
+            <Download size={14} />
+            <span className="hidden sm:inline">
+              {(activeTab === 'phones' || activeTab === 'tablets' || activeTab === 'replaced-phones') ? 'Phone Template' : 'Template'}
+            </span>
           </button>
           {canEdit && (
             <button onClick={() => setImportModal(true)} className="btn-secondary text-sm px-3 flex items-center gap-1.5">
@@ -330,78 +337,168 @@ const InventoryPage: React.FC = () => {
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-100">
-                <th className="table-header w-10">No.</th>
-                <th className="table-header">Date Acquired</th>
-                <th className="table-header min-w-52">Particulars</th>
-                <th className="table-header">Asset ID</th>
-                <th className="table-header">Serial No.</th>
-                <th className="table-header text-right">Cost/Unit</th>
-                <th className="table-header min-w-36">Issued To</th>
-                <th className="table-header">Date Issued</th>
-                <th className="table-header">Status</th>
-                <th className="table-header min-w-44">Notes</th>
-                <th className="table-header w-20">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan={11} className="py-16 text-center"><LoadingSpinner /></td></tr>
-              ) : assets.length === 0 ? (
-                <tr><td colSpan={11}>
-                  <EmptyState
-                    title={`No ${tabLabel.toLowerCase()} found`}
-                    message={activeFilterCount > 0 ? 'Try clearing your filters' : `No assets in this category yet`}
-                    action={canEdit ? <button onClick={() => setAddModal(true)} className="btn-primary text-sm">Add Asset</button> : undefined}
-                  />
-                </td></tr>
-              ) : assets.map(asset => (
-                <tr key={asset.id} className="table-row">
-                  <td className="table-cell text-center font-mono text-gray-300 text-xs">{asset.no}</td>
-                  <td className="table-cell whitespace-nowrap text-xs">{formatDate(asset.date_acquired)}</td>
-                  <td className="table-cell">
-                    <div className="font-semibold text-gray-900 text-sm">{asset.particulars}</div>
-                    {!activeTab && <div className="text-xs text-gray-400">{asset.categories?.name}</div>}
-                  </td>
-                  <td className="table-cell">
-                    <button
-                      onClick={() => navigate(`/inventory/${asset.id}`)}
-                      className={`font-mono text-xs font-bold hover:underline ${asset.asset_id ? 'text-blue-600' : 'text-amber-500 italic'}`}
-                    >
-                      {asset.asset_id || 'No Asset ID'}
-                    </button>
-                  </td>
-                  <td className="table-cell font-mono text-xs text-gray-400">{asset.serial_no || '—'}</td>
-                  <td className="table-cell text-right text-xs font-semibold">{formatPeso(asset.cost_per_unit)}</td>
-                  <td className="table-cell text-xs">
-                    {asset.employees
-                      ? <button onClick={() => navigate(`/employees/${asset.employees!.id}`)} className="text-blue-600 hover:underline">{asset.employees.name}</button>
-                      : asset.issued_branch
-                      ? <span className="inline-flex items-center gap-1 text-purple-700 bg-purple-50 px-2 py-0.5 rounded-lg font-semibold text-xs border border-purple-100">
-                          🏢 {(asset.issued_branch as { name: string }).name}
-                        </span>
-                      : asset.location
-                      ? <span className="inline-flex items-center gap-1 text-teal-700 bg-teal-50 px-2 py-0.5 rounded-lg font-semibold text-xs border border-teal-100">
-                          📍 {asset.location}
-                        </span>
-                      : <span className="text-gray-300">—</span>}
-                  </td>
-                  <td className="table-cell whitespace-nowrap text-xs">{formatDate(asset.date_issued)}</td>
-                  <td className="table-cell"><StatusBadge status={asset.status} size="sm" /></td>
-                  <td className="table-cell">
-                    <span className="text-gray-400 text-xs line-clamp-2">{asset.notes || '—'}</span>
-                  </td>
-                  <td className="table-cell">
-                    <div className="flex items-center gap-0.5">
-                      <button onClick={() => navigate(`/inventory/${asset.id}`)} className="p-1.5 hover:bg-blue-50 hover:text-blue-600 rounded-lg" title="View"><Eye size={13} /></button>
-                      {canEdit && <button onClick={() => setEditAsset(asset)} className="p-1.5 hover:bg-amber-50 hover:text-amber-600 rounded-lg" title="Edit"><Edit2 size={13} /></button>}
-                      {canDelete && <button onClick={() => setDeleteAsset(asset)} className="p-1.5 hover:bg-red-50 hover:text-red-600 rounded-lg" title="Delete"><Trash2 size={13} /></button>}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
+            {/* ── Phone / Tablet table ── */}
+            {(activeTab === 'phones' || activeTab === 'tablets' || activeTab === 'replaced-phones') ? (
+              <>
+                <thead>
+                  <tr className="border-b border-gray-100">
+                    <th className="table-header w-10">No.</th>
+                    <th className="table-header min-w-52">Unit</th>
+                    <th className="table-header">Serial Number</th>
+                    <th className="table-header">IMEI Number</th>
+                    <th className="table-header text-right">Price</th>
+                    <th className="table-header min-w-36">Issued To</th>
+                    <th className="table-header min-w-36">Returned By</th>
+                    <th className="table-header">Status</th>
+                    <th className="table-header min-w-44">Remarks</th>
+                    <th className="table-header w-20">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr><td colSpan={10} className="py-16 text-center"><LoadingSpinner /></td></tr>
+                  ) : assets.length === 0 ? (
+                    <tr><td colSpan={10}>
+                      <EmptyState
+                        title={`No ${tabLabel.toLowerCase()} found`}
+                        message={activeFilterCount > 0 ? 'Try clearing your filters' : 'No assets in this category yet'}
+                        action={canEdit ? <button onClick={() => setAddModal(true)} className="btn-primary text-sm">Add Asset</button> : undefined}
+                      />
+                    </td></tr>
+                  ) : assets.map(asset => {
+                    // IMEI stored in asset_details — show from notes or serial for now
+                    // Returned by — shown from notes if it contains "returned"
+                    const imei = asset.serial_no || '—'
+                    const issuedTo = asset.employees?.name || asset.location || '—'
+                    // Parse "Returned By" from notes field
+                    const notesText = asset.notes || ''
+                    const returnedMatch = notesText.match(/returned\s+(?:by\s+)?([^,;\n]+)/i)
+                    const returnedBy = returnedMatch ? returnedMatch[1].trim() : '—'
+                    const remarks = notesText
+
+                    return (
+                      <tr key={asset.id} className="table-row">
+                        <td className="table-cell text-center font-mono text-gray-300 text-xs">{asset.no}</td>
+                        <td className="table-cell">
+                          <div className="font-semibold text-gray-900 text-sm">{asset.particulars}</div>
+                          <button
+                            onClick={() => navigate(`/inventory/${asset.id}`)}
+                            className={`font-mono text-xs hover:underline ${asset.asset_id ? 'text-blue-500' : 'text-amber-500 italic'}`}
+                          >
+                            {asset.asset_id || 'No Asset ID'}
+                          </button>
+                        </td>
+                        <td className="table-cell font-mono text-xs text-gray-500">{asset.serial_no || '—'}</td>
+                        <td className="table-cell font-mono text-xs text-gray-500">
+                          {(() => {
+                            type DetailEntry = { detail_data?: Record<string, string> }
+                            const details = (asset as Asset & { asset_details?: DetailEntry | DetailEntry[] }).asset_details
+                            const detailData = Array.isArray(details)
+                              ? (details as DetailEntry[])[0]?.detail_data
+                              : (details as DetailEntry | undefined)?.detail_data
+                            return detailData?.['IMEI'] || detailData?.['IMEI Number'] || '—'
+                          })()}
+                        </td>
+                        <td className="table-cell text-right text-xs font-semibold">{formatPeso(asset.cost_per_unit)}</td>
+                        <td className="table-cell text-xs">
+                          {asset.employees
+                            ? <button onClick={() => navigate(`/employees/${asset.employees!.id}`)} className="text-blue-600 hover:underline">{asset.employees.name}</button>
+                            : <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="table-cell text-xs text-gray-500">{returnedBy}</td>
+                        <td className="table-cell"><StatusBadge status={asset.status} size="sm" /></td>
+                        <td className="table-cell">
+                          <span className="text-gray-400 text-xs line-clamp-2">{remarks || '—'}</span>
+                        </td>
+                        <td className="table-cell">
+                          <div className="flex items-center gap-0.5">
+                            <button onClick={() => navigate(`/inventory/${asset.id}`)} className="p-1.5 hover:bg-blue-50 hover:text-blue-600 rounded-lg" title="View"><Eye size={13} /></button>
+                            {canEdit && <button onClick={() => setEditAsset(asset)} className="p-1.5 hover:bg-amber-50 hover:text-amber-600 rounded-lg" title="Edit"><Edit2 size={13} /></button>}
+                            {canDelete && <button onClick={() => setDeleteAsset(asset)} className="p-1.5 hover:bg-red-50 hover:text-red-600 rounded-lg" title="Delete"><Trash2 size={13} /></button>}
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </>
+            ) : (
+              /* ── Standard inventory table ── */
+              <>
+                <thead>
+                  <tr className="border-b border-gray-100">
+                    <th className="table-header w-10">No.</th>
+                    <th className="table-header">Date Acquired</th>
+                    <th className="table-header min-w-52">Particulars</th>
+                    <th className="table-header">Asset ID</th>
+                    <th className="table-header">Serial No.</th>
+                    <th className="table-header text-right">Cost/Unit</th>
+                    <th className="table-header min-w-36">Issued To</th>
+                    <th className="table-header">Date Issued</th>
+                    <th className="table-header">Status</th>
+                    <th className="table-header min-w-44">Notes</th>
+                    <th className="table-header w-20">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr><td colSpan={11} className="py-16 text-center"><LoadingSpinner /></td></tr>
+                  ) : assets.length === 0 ? (
+                    <tr><td colSpan={11}>
+                      <EmptyState
+                        title={`No ${tabLabel.toLowerCase()} found`}
+                        message={activeFilterCount > 0 ? 'Try clearing your filters' : `No assets in this category yet`}
+                        action={canEdit ? <button onClick={() => setAddModal(true)} className="btn-primary text-sm">Add Asset</button> : undefined}
+                      />
+                    </td></tr>
+                  ) : assets.map(asset => (
+                    <tr key={asset.id} className="table-row">
+                      <td className="table-cell text-center font-mono text-gray-300 text-xs">{asset.no}</td>
+                      <td className="table-cell whitespace-nowrap text-xs">{formatDate(asset.date_acquired)}</td>
+                      <td className="table-cell">
+                        <div className="font-semibold text-gray-900 text-sm">{asset.particulars}</div>
+                        {!activeTab && <div className="text-xs text-gray-400">{asset.categories?.name}</div>}
+                      </td>
+                      <td className="table-cell">
+                        <button
+                          onClick={() => navigate(`/inventory/${asset.id}`)}
+                          className={`font-mono text-xs font-bold hover:underline ${asset.asset_id ? 'text-blue-600' : 'text-amber-500 italic'}`}
+                        >
+                          {asset.asset_id || 'No Asset ID'}
+                        </button>
+                      </td>
+                      <td className="table-cell font-mono text-xs text-gray-400">{asset.serial_no || '—'}</td>
+                      <td className="table-cell text-right text-xs font-semibold">{formatPeso(asset.cost_per_unit)}</td>
+                      <td className="table-cell text-xs">
+                        {asset.employees
+                          ? <button onClick={() => navigate(`/employees/${asset.employees!.id}`)} className="text-blue-600 hover:underline">{asset.employees.name}</button>
+                          : asset.issued_branch
+                          ? <span className="inline-flex items-center gap-1 text-purple-700 bg-purple-50 px-2 py-0.5 rounded-lg font-semibold text-xs border border-purple-100">
+                              🏢 {(asset.issued_branch as { name: string }).name}
+                            </span>
+                          : asset.location
+                          ? <span className="inline-flex items-center gap-1 text-teal-700 bg-teal-50 px-2 py-0.5 rounded-lg font-semibold text-xs border border-teal-100">
+                              📍 {asset.location}
+                            </span>
+                          : <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="table-cell whitespace-nowrap text-xs">{formatDate(asset.date_issued)}</td>
+                      <td className="table-cell"><StatusBadge status={asset.status} size="sm" /></td>
+                      <td className="table-cell">
+                        <span className="text-gray-400 text-xs line-clamp-2">{asset.notes || '—'}</span>
+                      </td>
+                      <td className="table-cell">
+                        <div className="flex items-center gap-0.5">
+                          <button onClick={() => navigate(`/inventory/${asset.id}`)} className="p-1.5 hover:bg-blue-50 hover:text-blue-600 rounded-lg" title="View"><Eye size={13} /></button>
+                          {canEdit && <button onClick={() => setEditAsset(asset)} className="p-1.5 hover:bg-amber-50 hover:text-amber-600 rounded-lg" title="Edit"><Edit2 size={13} /></button>}
+                          {canDelete && <button onClick={() => setDeleteAsset(asset)} className="p-1.5 hover:bg-red-50 hover:text-red-600 rounded-lg" title="Delete"><Trash2 size={13} /></button>}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </>
+            )}
           </table>
         </div>
         <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
