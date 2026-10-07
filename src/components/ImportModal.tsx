@@ -210,11 +210,14 @@ const ImportModal: React.FC<Props> = ({ open, onClose, onImported, categories, b
       const row = toImport[i]
       setImportProgress(Math.round(((i + 1) / toImport.length) * 100))
 
-      // For phone imports with no category specified, default to "Company Phone"
-      // Detect phone if: IMEI present, or model name matches phone brands
-      const phoneKeywords = ['phone', 'samsung', 'iphone', 'honor', 'huawei', 'oppo', 'vivo', 'realme', 'xiaomi', 'redmi', 'nokia', 'motorola']
+      // For phone/tablet imports with no category specified, detect by brand/model keywords
+      const phoneKeywords = ['phone', 'samsung galaxy', 'iphone', 'honor', 'huawei', 'oppo', 'vivo', 'realme', 'xiaomi', 'redmi', 'nokia', 'motorola']
+      const tabletKeywords = ['tablet', 'ipad', 'samsung tab', 'huawei tab', 'lenovo tab', 'xiaomi pad', 'realme pad']
       const isPhoneByName = phoneKeywords.some(k => row.particulars.toLowerCase().includes(k))
-      const categoryName = row.category || (row.imei || isPhoneByName ? 'Company Phone' : '')
+      const isTabletByName = tabletKeywords.some(k => row.particulars.toLowerCase().includes(k))
+      const categoryName = row.category ||
+        (isTabletByName ? 'Tablet' :
+         row.imei || isPhoneByName ? 'Company Phone' : '')
       const cat = categories.find(c => c.name.toLowerCase() === categoryName.toLowerCase())
       const branch = branches.find(b => b.name.toLowerCase() === row.branch.toLowerCase())
 
