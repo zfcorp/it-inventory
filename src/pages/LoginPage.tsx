@@ -1,8 +1,9 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Eye, EyeOff, Lock, Mail, Shield } from 'lucide-react'
+import { Eye, EyeOff, Lock, Mail, Shield, ArrowLeft, CheckCircle } from 'lucide-react'
 import logoUrl from '../assets/logo'
 import { useAuth } from '../contexts/AuthContext'
+import { supabase } from '../lib/supabase'
 
 const LoginPage: React.FC = () => {
   const { login } = useAuth()
@@ -12,6 +13,25 @@ const LoginPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+
+  // Forgot password state
+  const [showForgot, setShowForgot] = useState(false)
+  const [forgotEmail, setForgotEmail] = useState('')
+  const [forgotSent, setForgotSent] = useState(false)
+  const [forgotLoading, setForgotLoading] = useState(false)
+  const [forgotError, setForgotError] = useState('')
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setForgotError('')
+    setForgotLoading(true)
+    const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    })
+    setForgotLoading(false)
+    if (error) setForgotError(error.message)
+    else setForgotSent(true)
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -110,6 +130,16 @@ const LoginPage: React.FC = () => {
                 </span>
               ) : 'Sign In'}
             </button>
+
+            <div className="text-center mt-3">
+              <button
+                type="button"
+                onClick={() => { setShowForgot(true); setForgotEmail(email); setForgotSent(false); setForgotError('') }}
+                className="text-xs text-slate-400 hover:text-blue-400 transition-colors"
+              >
+                Forgot password?
+              </button>
+            </div>
           </form>
         </div>
 
@@ -117,6 +147,88 @@ const LoginPage: React.FC = () => {
           Zurich Finance Corp — IT Inventory System &nbsp;·&nbsp; &copy; {new Date().getFullYear()}
         </p>
       </div>
+
+      {/* Forgot Password Modal */}
+      {showForgot && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowForgot(false)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 animate-fade-in">
+            {!forgotSent ? (
+              <>
+                <button
+                  onClick={() => setShowForgot(false)}
+                  className="absolute top-4 right-4 p-1.5 hover:bg-gray-100 rounded-lg text-gray-400"
+                >
+                  <ArrowLeft size={16} />
+                </button>
+                <h2 className="text-lg font-bold text-gray-900 mb-1">Reset Password</h2>
+                <p className="text-sm text-gray-500 mb-5">
+                  Enter your email address and we'll send you a link to reset your password.
+                </p>
+                <form onSubmit={handleForgotPassword} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                      Email Address
+                    </label>
+                    <div className="relative">
+                      <Mail size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                      <input
+                        type="text"
+                        value={forgotEmail}
+                        onChange={e => setForgotEmail(e.target.value)}
+                        className="w-full border border-gray-300 rounded-xl px-3.5 py-2.5 pl-10 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="you@zurichfinance.com"
+                        required
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+
+                  {forgotError && (
+                    <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2.5 rounded-xl">
+                      <Shield size={13} className="flex-shrink-0" />
+                      {forgotError}
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={forgotLoading || !forgotEmail}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {forgotLoading ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        Sending...
+                      </span>
+                    ) : 'Send Reset Link'}
+                  </button>
+                </form>
+              </>
+            ) : (
+              <div className="text-center py-4">
+                <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <CheckCircle size={28} className="text-green-500" />
+                </div>
+                <h2 className="text-lg font-bold text-gray-900 mb-2">Check your email</h2>
+                <p className="text-sm text-gray-500 mb-1">
+                  We sent a password reset link to:
+                </p>
+                <p className="text-sm font-semibold text-blue-600 mb-5">{forgotEmail}</p>
+                <p className="text-xs text-gray-400 mb-6">
+                  Click the link in the email to reset your password. Check your spam folder if you don't see it.
+                </p>
+                <button
+                  onClick={() => setShowForgot(false)}
+                  className="btn-primary w-full justify-center"
+                >
+                  Back to Sign In
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
